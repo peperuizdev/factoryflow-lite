@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
-import { getWorkOrder } from "../services/workorders"
-import { listInspections, createInspection } from "../services/inspections"  // ← NUEVO: createInspection
+import { getWorkOrder, updateWorkOrder } from "../services/workorders" // ← NUEVO: updateWorkOrder
+import { listInspections, createInspection } from "../services/inspections"
 
 function StatusBadge({ status }) {
   const base = "px-2 py-1 rounded text-xs font-semibold"
@@ -22,8 +22,15 @@ function ResultBadge({ result }) {
   return <span className={`${base} ${palette[result] || "bg-slate-700 text-slate-300"}`}>{result}</span>
 }
 
+// Opciones de estado que el backend acepta (choices del modelo)
+const STATUS_OPTIONS = [
+  { label: "Open", value: "OPEN" },
+  { label: "In Progress", value: "IN_PROGRESS" },
+  { label: "Done", value: "DONE" },
+]
+
 export default function WorkOrderDetail() {
-  // Leemos el :id de la URL → /workorders/:id
+  // :id de la URL → /workorders/:id
   const { id } = useParams()
 
   // Estado de la orden + inspecciones
@@ -35,12 +42,20 @@ export default function WorkOrderDetail() {
   const [loadingIns, setLoadingIns] = useState(false)
   const [error, setError] = useState(null)
 
-  // Estado del formulario de nueva inspección (inputs controlados)
-  const [result, setResult] = useState("OK")    // "OK" | "FAIL"
+  // Formulario de nueva inspección
+  const [result, setResult] = useState("OK")
   const [notes, setNotes] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState(null)
   const [formSuccess, setFormSuccess] = useState(null)
+
+  // Formulario de edición de WorkOrder (inputs controlados)
+  const [editTitle, setEditTitle] = useState("")
+  const [editStation, setEditStation] = useState("")
+  const [editStatus, setEditStatus] = useState("OPEN")
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [editError, setEditError] = useState(null)
+  const [editSuccess, setEditSuccess] = useState(null)
 
   // Cargar la WorkOrder
   useEffect(() => {
@@ -69,7 +84,15 @@ export default function WorkOrderDetail() {
     return () => { cancelled = true }
   }, [id])
 
-  // Cargar inspecciones de la orden (filtrado en backend)
+  // Cuando llega la orden, precargar los campos del formulario de edición
+  useEffect(() => {
+    if (!order) return
+    setEditTitle(order.title ?? "")
+    setEditStation(order.station ?? "")
+    setEditStatus(order.status ?? "OPEN")
+  }, [order])
+
+  // Cargar inspecciones de la orden
   useEffect(() => {
     if (!id) return
     let cancelled = false
@@ -79,8 +102,8 @@ export default function WorkOrderDetail() {
         const resp = await listInspections({ work_order: id })
         const items = Array.isArray(resp) ? resp : resp?.results ?? []
         if (!cancelled) setInspections(items)
-      } catch (err) {
-        // si falla, mantenemos la UI viva; podemos setear un error
+      } catch {
+        // manejar error de inspecciones aparte
       } finally {
         if (!cancelled) setLoadingIns(false)
       }
@@ -89,42 +112,65 @@ export default function WorkOrderDetail() {
     return () => { cancelled = true }
   }, [id])
 
-  // 7) Submit del formulario: crear inspección y refrescar lista en memoria
+  // Crear inspección
   const handleCreateInspection = async (e) => {
     e.preventDefault()
     setFormError(null)
     setFormSuccess(null)
     setSubmitting(true)
     try {
-      // POST /api/inspections/ con payload 
       const created = await createInspection({
         work_order: Number(id),
         result,
         notes: notes.trim() || undefined,
       })
-
-      // Actualización in-memory: añadimos la nueva inspección al principio
       setInspections((prev) => [created, ...prev])
-
-      // Limpiar formulario y feedback
       setNotes("")
       setResult("OK")
       setFormSuccess("Inspección creada correctamente.")
     } catch (err) {
       const status = err?.response?.status
       const msg =
-        status === 400
-          ? "Datos inválidos. Revisa el formulario."
-          : status === 401
-            ? "No autorizado. Inicia sesión."
-            : "No se pudo crear la inspección."
+        status === 400 ? "Datos inválidos. Revisa el formulario."
+        : status === 401 ? "No autorizado. Inicia sesión."
+        : "No se pudo crear la inspección."
       setFormError(msg)
     } finally {
       setSubmitting(false)
     }
   }
 
-  // 8) Si falla cargar la orden, no tiene sentido seguir
+  // Guardar cambios de la WorkOrder (PATCH)
+  const handleUpdateWorkOrder = async (e) => {
+    e.preventDefault()
+    setEditError(null)
+    setEditSuccess(null)
+    setSavingEdit(true)
+    try {
+      // Componemos payload parcial (PATCH)
+      const payload = {
+        title: editTitle.trim(),
+        station: editStation.trim(),
+        status: editStatus,
+      }
+
+      const updated = await updateWorkOrder(Number(id), payload) // PATCH /api/workorders/:id/
+      // Actualizamos la orden en memoria para que la UI refleje los cambios
+      setOrder(updated)
+      setEditSuccess("Orden actualizada correctamente.")
+    } catch (err) {
+      const status = err?.response?.status
+      const msg =
+        status === 400 ? "Datos inválidos. Revisa los campos."
+        : status === 401 ? "No autorizado. Inicia sesión."
+        : "No se pudo actualizar la orden."
+      setEditError(msg)
+    } finally {
+      setSavingEdit(false)
+    }
+  }
+
+  // Si falla cargar la orden, no seguimos
   if (error) {
     return (
       <section className="space-y-4">
@@ -136,7 +182,7 @@ export default function WorkOrderDetail() {
 
   return (
     <section className="space-y-8">
-      {/* Volver */}
+      {/* Volver*/}
       <div className="flex items-center gap-2 text-sm text-gray-400">
         <Link to="/workorders" className="text-blue-400 hover:text-blue-300 underline">← Volver a órdenes</Link>
       </div>
@@ -161,6 +207,80 @@ export default function WorkOrderDetail() {
         )}
       </div>
 
+      {/*Formulario de edición de WorkOrder */}
+      <div className="rounded-xl border border-slate-700 p-6 bg-slate-800/40">
+        <h3 className="text-xl font-semibold mb-4">Editar orden</h3>
+
+        {editError && (
+          <div className="mb-4 bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded">
+            {editError}
+          </div>
+        )}
+        {editSuccess && (
+          <div className="mb-4 bg-green-500/20 border border-green-500 text-green-200 px-4 py-2 rounded">
+            {editSuccess}
+          </div>
+        )}
+
+        <form onSubmit={handleUpdateWorkOrder} className="grid gap-4 md:grid-cols-3">
+          {/* Título */}
+          <div className="md:col-span-1">
+            <label htmlFor="editTitle" className="block text-sm text-gray-300 mb-1">Título</label>
+            <input
+              id="editTitle"
+              type="text"
+              value={editTitle}
+              onChange={(e) => setEditTitle(e.target.value)}
+              disabled={savingEdit || loadingOrder || !order}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
+              required
+            />
+          </div>
+
+          {/* Estación */}
+          <div className="md:col-span-1">
+            <label htmlFor="editStation" className="block text-sm text-gray-300 mb-1">Estación</label>
+            <input
+              id="editStation"
+              type="text"
+              value={editStation}
+              onChange={(e) => setEditStation(e.target.value)}
+              disabled={savingEdit || loadingOrder || !order}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
+              required
+            />
+          </div>
+
+          {/* Estado */}
+          <div className="md:col-span-1">
+            <label htmlFor="editStatus" className="block text-sm text-gray-300 mb-1">Estado</label>
+            <select
+              id="editStatus"
+              value={editStatus}
+              onChange={(e) => setEditStatus(e.target.value)}
+              disabled={savingEdit || loadingOrder || !order}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
+              required
+            >
+              {STATUS_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Guardar */}
+          <div className="md:col-span-3">
+            <button
+              type="submit"
+              disabled={savingEdit || loadingOrder || !order}
+              className="px-4 py-2 rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-60 disabled:cursor-not-allowed font-semibold transition"
+            >
+              {savingEdit ? "Guardando…" : "Guardar cambios"}
+            </button>
+          </div>
+        </form>
+      </div>
+
       {/* Formulario de nueva inspección */}
       <div className="rounded-xl border border-slate-700 p-6 bg-slate-800/40">
         <h3 className="text-xl font-semibold mb-4">Nueva inspección</h3>
@@ -177,7 +297,6 @@ export default function WorkOrderDetail() {
         )}
 
         <form onSubmit={handleCreateInspection} className="grid gap-4 md:grid-cols-3">
-          {/* Resultado */}
           <div className="md:col-span-1">
             <label htmlFor="result" className="block text-sm text-gray-300 mb-1">Resultado</label>
             <select
@@ -192,7 +311,6 @@ export default function WorkOrderDetail() {
             </select>
           </div>
 
-          {/* Notas */}
           <div className="md:col-span-2">
             <label htmlFor="notes" className="block text-sm text-gray-300 mb-1">Notas (opcional)</label>
             <input
@@ -206,7 +324,6 @@ export default function WorkOrderDetail() {
             />
           </div>
 
-          {/* Submit */}
           <div className="md:col-span-3">
             <button
               type="submit"
