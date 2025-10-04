@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom"
 import { useEffect, useState } from "react"
 import { listWorkOrders } from "../services/workorders"
 
@@ -129,7 +130,11 @@ export default function WorkOrders() {
               {data.items.map((wo) => (
                 <tr key={wo.id} className="hover:bg-slate-800/40">
                   <td className="px-4 py-3 text-sm text-gray-300">{wo.id}</td>
-                  <td className="px-4 py-3 text-sm text-gray-100">{wo.title}</td>
+                  <td className="px-4 py-3 text-sm text-gray-100">
+                    <Link to={`/workorders/${wo.id}`} className="text-blue-400 hover:text-blue-300 underline">
+                      {wo.title}
+                    </Link>
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-300">{wo.station}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={wo.status} />

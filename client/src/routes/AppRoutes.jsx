@@ -3,6 +3,7 @@ import Layout from "../layout/Layout"
 import Home from "../pages/Home"
 import Login from "../pages/Login"
 import WorkOrders from "../pages/WorkOrders"
+import WorkOrderDetail from "../pages/WorkOrderDetail"
 import RequireAuth from "../context/RequireAuth"
 
 export default function AppRoutes() {
@@ -16,6 +17,7 @@ export default function AppRoutes() {
           {/* Rutas protegidas */}
           <Route element={<RequireAuth />}>
             <Route path="workorders" element={<WorkOrders />} />
+            <Route path="workorders/:id" element={<WorkOrderDetail />} />
           </Route>
         </Route>
       </Routes>
