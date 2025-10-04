@@ -7,6 +7,7 @@ export default function Navbar() {
         <h1 className="text-2xl font-bold text-white">FactoryFlow Lite</h1>
         <div className="space-x-4 text-gray-300">
           <Link to="/" className="hover:text-blue-400 transition">Inicio</Link>
+          <Link to="/workorders" className="hover:text-blue-400 transition">Órdesnes de trabajo</Link>
           <Link to="/login" className="hover:text-blue-400 transition">Login</Link>
         </div>
       </div>
