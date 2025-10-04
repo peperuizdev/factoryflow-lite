@@ -1,36 +1,54 @@
 import { createContext, useContext, useState, useEffect } from "react"
+import api from "../services/api" 
 
 const AuthContext = createContext()
 
 export function AuthProvider({ children }) {
+  // Estado global de auth
   const [user, setUser] = useState(null)
-  const [token, setToken] = useState(localStorage.getItem("token") || null)
+  const [token, setToken] = useState(() => localStorage.getItem("token") || null)
   const [loading, setLoading] = useState(false)
 
-  // Simulación: si hay token en localStorage, consideramos que el usuario está autenticado
+  // Rehidratación: si hay token guardado, levanta el usuario desde localStorage
   useEffect(() => {
     if (token) {
-      setUser({ username: "usuario_demo" }) // Se integrará con datos reales del backend
+      const savedUsername = localStorage.getItem("username")
+      if (savedUsername) setUser({ username: savedUsername })
+    } else {
+      setUser(null)
     }
   }, [token])
 
-  // Login simulado preparado para integrar con backend real
+  // Login con Django (SimpleJWT)
   const login = async (username, password) => {
     setLoading(true)
     try {
-      // Aquí se hará la llamada real al backend
-      const fakeToken = "FAKE_TOKEN_EXAMPLE"
-      localStorage.setItem("token", fakeToken)
-      setToken(fakeToken)
+      // POST /api/auth/token/  → { access, refresh }
+      const { data } = await api.post("auth/token/", { username, password })
+      const { access } = data
+
+      // Persistencia: guardamos access token + username
+      localStorage.setItem("token", access)
+      localStorage.setItem("username", username)
+
+      // Actualizamos estado global
+      setToken(access)
       setUser({ username })
+
+      // return true para flujos que quieran saber si todo OK
+      return true
+    } catch (err) {
+      // Propagamos el error para que el componente muestre feedback
+      throw err
     } finally {
       setLoading(false)
     }
   }
 
-  // Logout
+  // Logout: limpiamos storage y estado
   const logout = () => {
     localStorage.removeItem("token")
+    localStorage.removeItem("username")
     setToken(null)
     setUser(null)
   }
