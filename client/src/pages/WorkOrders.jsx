@@ -1,6 +1,6 @@
-import { Link } from "react-router-dom"
 import { useEffect, useState } from "react"
-import { listWorkOrders } from "../services/workorders"
+import { listWorkOrders, createWorkOrder, deleteWorkOrder } from "../services/workorders"
+import { Link } from "react-router-dom"
 
 const STATUS_OPTIONS = [
   { label: "Todas", value: "ALL" },
@@ -20,14 +20,19 @@ function StatusBadge({ status }) {
 }
 
 export default function WorkOrders() {
-  // Estado de UI: filtro, paginación, datos, carga y error
+  // Estado de filtro/paginación/datos/carga/error
   const [status, setStatus] = useState("ALL")
   const [page, setPage] = useState(1)
   const [data, setData] = useState({ items: [], count: null, next: null, previous: null })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
 
-  // Efecto: cada vez que cambia el filtro o la página, pedimos datos al backend
+  // Estado del formulario de creación
+  const [newTitle, setNewTitle] = useState("")
+  const [newStation, setNewStation] = useState("")
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState(null)
+
   useEffect(() => {
     let cancelled = false
     async function fetchData() {
@@ -38,13 +43,10 @@ export default function WorkOrders() {
           status: status === "ALL" ? undefined : status,
           page,
         })
-
-        // Normalización del shape: DRF paginado vs no paginado
         const items = Array.isArray(resp) ? resp : resp?.results ?? []
         const count = Array.isArray(resp) ? resp.length : resp?.count ?? null
         const next = Array.isArray(resp) ? null : resp?.next ?? null
         const previous = Array.isArray(resp) ? null : resp?.previous ?? null
-
         if (!cancelled) setData({ items, count, next, previous })
       } catch (err) {
         if (!cancelled) {
@@ -56,16 +58,76 @@ export default function WorkOrders() {
       }
     }
     fetchData()
-    return () => {
-      // Evita setState si el componente se desmonta antes de terminar la petición
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [status, page])
 
-  // Handlers de UI
+  // Crear una orden
+  const handleCreate = async (e) => {
+    e.preventDefault()
+    setCreateError(null)
+    if (!newTitle.trim() || !newStation.trim()) {
+      setCreateError("Título y Estación son obligatorios.")
+      return
+    }
+    setCreating(true)
+    try {
+      const created = await createWorkOrder({
+        title: newTitle.trim(),
+        station: newStation.trim(),
+        status: "OPEN",
+      })
+      // Insertamos la nueva orden al principio
+      setData((prev) => {
+        const items = [created, ...prev.items]
+        const count = typeof prev.count === "number" ? prev.count + 1 : prev.count
+        return { ...prev, items, count }
+      })
+      setNewTitle("")
+      setNewStation("")
+    } catch (err) {
+      const status = err?.response?.status
+      const msg =
+        status === 400 ? "Datos inválidos. Revisa los campos." :
+        status === 401 ? "No autorizado. Inicia sesión." :
+        "No se pudo crear la orden."
+      setCreateError(msg)
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  // Eliminar una orden con confirmación
+  const handleDelete = async (id) => {
+    const ok = window.confirm("¿Seguro que quieres eliminar esta orden?")
+    if (!ok) return
+    try {
+      await deleteWorkOrder(id)
+      setData((prev) => {
+        const items = prev.items.filter((it) => it.id !== id)
+        const count = typeof prev.count === "number" ? Math.max(prev.count - 1, 0) : prev.count
+        return { ...prev, items, count }
+      })
+      // Si nos quedamos sin items y hay página anterior, retrocedemos una
+      setTimeout(() => {
+        setData((prev) => {
+          if (prev.items.length === 0 && prev.previous) {
+            setPage((p) => Math.max(1, p - 1))
+          }
+          return prev
+        })
+      }, 0)
+    } catch (err) {
+      const status = err?.response?.status
+      const msg =
+        status === 401 ? "No autorizado. Inicia sesión." :
+        "No se pudo eliminar la orden."
+      alert(msg)
+    }
+  }
+
   const onChangeStatus = (e) => {
     setStatus(e.target.value)
-    setPage(1) // al cambiar filtro, reseteamos a página 1
+    setPage(1)
   }
 
   const canPrev = Boolean(data.previous)
@@ -74,7 +136,7 @@ export default function WorkOrders() {
   return (
     <section className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-6">
         <div>
           <h2 className="text-3xl font-bold">Órdenes de trabajo</h2>
           <p className="text-gray-400">Lista filtrable por estado y con paginación.</p>
@@ -94,6 +156,55 @@ export default function WorkOrders() {
             ))}
           </select>
         </div>
+      </div>
+
+      {/* NUEVO: Formulario inline para crear una nueva orden (simple y accesible) */}
+      <div className="rounded-xl border border-slate-700 p-4 bg-slate-800/40">
+        <form onSubmit={handleCreate} className="grid gap-4 md:grid-cols-3">
+          <div>
+            <label htmlFor="newTitle" className="block text-sm text-gray-300 mb-1">Título</label>
+            <input
+              id="newTitle"
+              type="text"
+              value={newTitle}
+              onChange={(e) => setNewTitle(e.target.value)}
+              disabled={creating}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
+              placeholder="Ej. Inspección ala izq."
+              required
+            />
+          </div>
+          <div>
+            <label htmlFor="newStation" className="block text-sm text-gray-300 mb-1">Estación</label>
+            <input
+              id="newStation"
+              type="text"
+              value={newStation}
+              onChange={(e) => setNewStation(e.target.value)}
+              disabled={creating}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
+              placeholder="Ej. ST-12"
+              required
+            />
+          </div>
+          <div className="flex items-end">
+            <button
+              type="submit"
+              disabled={creating}
+              className="w-full md:w-auto px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed font-semibold transition"
+            >
+              {creating ? "Creando…" : "Crear orden"}
+            </button>
+          </div>
+        </form>
+        {createError && (
+          <div className="mt-3 bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded">
+            {createError}
+          </div>
+        )}
+        <p className="text-xs text-gray-400 mt-2">
+          * El estado inicial se establece a <span className="font-semibold">OPEN</span>.
+        </p>
       </div>
 
       {/* Estados de carga / error */}
@@ -117,12 +228,13 @@ export default function WorkOrders() {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300">Estación</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300">Estado</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300">Creado</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-300">Acciones</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-800">
               {data.items.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-6 text-center text-gray-400">
+                  <td colSpan={6} className="px-4 py-6 text-center text-gray-400">
                     No hay órdenes para mostrar.
                   </td>
                 </tr>
@@ -130,7 +242,7 @@ export default function WorkOrders() {
               {data.items.map((wo) => (
                 <tr key={wo.id} className="hover:bg-slate-800/40">
                   <td className="px-4 py-3 text-sm text-gray-300">{wo.id}</td>
-                  <td className="px-4 py-3 text-sm text-gray-100">
+                  <td className="px-4 py-3 text-sm">
                     <Link to={`/workorders/${wo.id}`} className="text-blue-400 hover:text-blue-300 underline">
                       {wo.title}
                     </Link>
@@ -142,6 +254,15 @@ export default function WorkOrders() {
                   <td className="px-4 py-3 text-sm text-gray-400">
                     {wo.created_at ? new Date(wo.created_at).toLocaleString() : "-"}
                   </td>
+                  <td className="px-4 py-3 text-sm">
+                    <button
+                      onClick={() => handleDelete(wo.id)}
+                      className="px-3 py-1 rounded border border-red-600 text-red-300 hover:bg-red-600/10 transition"
+                      title="Eliminar orden"
+                    >
+                      Eliminar
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -149,7 +270,7 @@ export default function WorkOrders() {
         </div>
       )}
 
-      {/* Paginación (solo si el backend devuelve next/previous) */}
+      {/* Paginación */}
       {!loading && !error && (data.next || data.previous) && (
         <div className="flex items-center justify-between">
           <button
