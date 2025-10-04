@@ -2,7 +2,7 @@
 
 Demo full-stack para **gestionar órdenes de trabajo e inspecciones** con:
 
-* **Backend:** Django + Django REST Framework + SimpleJWT
+* **Backend:** Django + Django REST Framework + SimpleJWT + drf-spectacular
 * **Frontend:** React (Vite) + React Router + Tailwind + Axios (interceptor JWT)
 
 ---
@@ -19,6 +19,7 @@ Demo full-stack para **gestionar órdenes de trabajo e inspecciones** con:
   * [Autenticación JWT](#autenticación-jwt)
   * [Permisos](#permisos)
   * [Endpoints](#endpoints)
+  * [Documentación API (Swagger)](#documentación-api-swagger)
   * [Admin](#admin)
   * [Migraciones](#migraciones)
 * [Frontend (React/Vite)](#frontend-reactvite)
@@ -91,6 +92,7 @@ python manage.py runserver  # http://127.0.0.1:8000
 ```bash
 cd client
 npm install
+# crea el .env (ver sección "Variables de entorno")
 npm run dev  # http://localhost:5173
 ```
 
@@ -103,23 +105,44 @@ npm run dev  # http://localhost:5173
 
 ---
 
+## Variables de entorno
+
+### Backend
+
+Crea `server/.env` basándote en `server/.env.example`:
+
+```bash
+# Django settings
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+
+# Hosts permitidos
+ALLOWED_HOSTS=127.0.0.1,localhost
+
+# Orígenes permitidos para CORS
+CORS_ALLOWED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Orígenes permitidos para CSRF
+CSRF_TRUSTED_ORIGINS=http://localhost:5173,http://127.0.0.1:5173
+
+# Database (opcional - si no se define, usa SQLite)
+# DB_ENGINE=django.db.backends.postgresql
+# DB_NAME=factoryflow
+# DB_USER=postgres
+# DB_PASSWORD=postgres
+# DB_HOST=127.0.0.1
+# DB_PORT=5432
+```
+
 ### Frontend
 
-En este repo dejamos `baseURL` *hardcodeado* a `http://127.0.0.1:8000/api/` en `client/src/services/api.js`.
-**Opcional (mejora):** parametrizar con variable Vite:
+Crea `client/.env`:
 
-```js
-// client/src/services/api.js
-const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || "http://127.0.0.1:8000/api/",
-})
-```
-
-Y crear `.env` en `client/`:
-
-```
+```bash
 VITE_API_URL=http://127.0.0.1:8000/api/
 ```
+
+Vite soporta `.env` de forma nativa sin necesidad de librerías adicionales. Las variables deben tener el prefijo `VITE_`.
 
 ---
 
@@ -167,6 +190,21 @@ PATCH  /api/inspections/:id/    -> actualizar parcial
 DELETE /api/inspections/:id/    -> eliminar
 ```
 
+### Documentación API (Swagger)
+
+La API está documentada automáticamente con **drf-spectacular**:
+
+* **Swagger UI** (interfaz interactiva): http://127.0.0.1:8000/api/docs/
+* **Schema OpenAPI** (JSON): http://127.0.0.1:8000/api/schema/
+
+Desde Swagger UI puedes:
+- Ver todos los endpoints disponibles
+- Probar requests directamente desde el navegador
+- Ver modelos de datos y sus campos
+- Autenticarte con JWT usando el botón "Authorize"
+
+La documentación se actualiza automáticamente al modificar modelos o serializers.
+
 ### Admin
 
 ```bash
@@ -202,11 +240,11 @@ python manage.py createsuperuser
   * `useEffect` rehidrata `user` cuando cambia `token` (lee `localStorage`).
   * `login(username, password)`: POST a `/api/auth/token/`, guarda `access` en `localStorage` y estado.
   * `logout()`: limpia storage y estado.
-* **Cómo explicarlo**: “Estado global sin prop-drilling. Persisto token y rehidrato al recargar. Interceptor Axios añade `Authorization` a cada request.”
+* **Cómo explicarlo**: "Estado global sin prop-drilling. Persisto token y rehidrato al recargar. Interceptor Axios añade `Authorization` a cada request."
 
 ### Servicios Axios
 
-* `api.js`: instancia Axios con `baseURL` e **interceptor de request** que añade el JWT si existe.
+* `api.js`: instancia Axios con `baseURL` desde variable de entorno (`VITE_API_URL`) e **interceptor de request** que añade el JWT si existe.
 * `workorders.js`: `list/get/create/patch/delete` (filtros y paginación **en backend**).
 * `inspections.js`: igual, con filtro `work_order=:id`.
 
@@ -219,43 +257,9 @@ python manage.py createsuperuser
 
 ---
 
-**Tailwind + PostCSS (Vite):**
-
-* Usa el setup estable: `postcss.config.js` con `tailwindcss` y `autoprefixer`, e importa `index.css` con:
-
-  ```css
-  @tailwind base;
-  @tailwind components;
-  @tailwind utilities;
-  ```
-
-**`ModuleNotFoundError: workorders.urls`**
-
-* Asegúrate de **crear `workorders/urls.py`** e **incluirlo** en `server_core/urls.py`:
-
-  ```python
-  path("api/", include("workorders.urls")),
-  ```
-
-**`401 Unauthorized` desde el frontend**
-
-* Inicia sesión en `/login`.
-* Revisa que `localStorage` tenga `token`.
-* Verifica que `api.js` esté usando `Authorization: Bearer <token>` (interceptor activo).
-
-**`405 Method Not Allowed`**
-
-* Verifica que el endpoint exista para ese método (p. ej., `POST` en `workorders/` requiere `WorkOrderViewSet` registrado en router).
-
-**`OperationalError` de migraciones**
-
-* Ejecuta `makemigrations` y `migrate` con el entorno virtual activado.
-
----
-
 ## Flujo (30s)
 
-> “Monté una API en Django/DRF con JWT (SimpleJWT) para proteger el CRUD de órdenes e inspecciones. En React uso un AuthContext que persiste el token en `localStorage` y un interceptor Axios que lo añade a cada request. Protejo rutas con un guard que redirige a `/login` guardando `state.from`. El listado de órdenes tiene filtros y paginación **server-side**; el detalle permite **editar** título/estación/estado y **crear inspecciones**. Las creaciones/eliminaciones actualizan la UI en memoria para una UX fluida.”
+> "Monté una API en Django/DRF con JWT (SimpleJWT) para proteger el CRUD de órdenes e inspecciones. En React uso un AuthContext que persiste el token en `localStorage` y un interceptor Axios que lo añade a cada request. Protejo rutas con un guard que redirige a `/login` guardando `state.from`. El listado de órdenes tiene filtros y paginación **server-side**; el detalle permite **editar** título/estación/estado y **crear inspecciones**. Las creaciones/eliminaciones actualizan la UI en memoria para una UX fluida. La API está documentada automáticamente con Swagger UI."
 
 ---
 
@@ -280,6 +284,7 @@ python manage.py createsuperuser
 git commit -m "feat(auth): Axios instance with JWT interceptor and AuthContext login"
 git commit -m "feat(frontend): WorkOrders UI with filter, pagination, create & delete"
 git commit -m "feat(frontend): WorkOrder detail edit (PATCH) and inspections create"
+git commit -m "feat(backend): add Swagger UI with drf-spectacular"
 git commit -m "docs: add README with setup and interview notes"
 ```
 
@@ -291,4 +296,3 @@ git commit -m "docs: add README with setup and interview notes"
 * **Roles/permissions** en DRF (p. ej., operadores vs. managers).
 * **Tests**: DRF (APITestCase) y React (Vitest/RTL).
 * **Docker** (compose para server+client).
-* **OpenAPI/Swagger** con `drf-spectacular`.

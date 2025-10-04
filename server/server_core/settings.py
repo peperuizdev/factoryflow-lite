@@ -4,32 +4,26 @@ from datetime import timedelta
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-# Inicializar django-environ
 env = environ.Env(
     DEBUG=(bool, True)  
 )
 
-# Leer el archivo .env en la raíz de /server
 env.read_env(BASE_DIR / '.env')
 
-# Variables cargadas desde .env
 SECRET_KEY = env('SECRET_KEY', default='dev-secret-key')
 DEBUG = env.bool('DEBUG', default=True)
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
 
-# Apps instaladas
 INSTALLED_APPS = [
-    # Core de Django
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    # Terceros
     'rest_framework',
+    'drf_spectacular',
     'corsheaders',
-    # Apps del proyecto
     'workorders',
 ]
 
@@ -65,16 +59,26 @@ TEMPLATES = [
 WSGI_APPLICATION = 'server_core.wsgi.application'
 
 
-# Base de datos: SQLite para desarrollo
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+if env('DB_ENGINE', default=None):
+    DATABASES = {
+        'default': {
+            'ENGINE': env('DB_ENGINE'),
+            'NAME': env('DB_NAME'),
+            'USER': env('DB_USER'),
+            'PASSWORD': env('DB_PASSWORD'),
+            'HOST': env('DB_HOST', default='127.0.0.1'),
+            'PORT': env('DB_PORT', default='5432'),
+        }
     }
-}
+else:
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / 'db.sqlite3',
+        }
+    }
 
 
-# Validadores de contraseñas
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
@@ -91,7 +95,6 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 
-# Internacionalización y zona horaria
 LANGUAGE_CODE = 'es-es'
 
 TIME_ZONE = 'Europe/Madrid'
@@ -101,32 +104,32 @@ USE_I18N = True
 USE_TZ = True
 
 
-# Archivos estáticos
 STATIC_URL = 'static/'
 
-# DRF (API) y JWT (auth) 
 REST_FRAMEWORK = {
-    # JWT en todas las vistas
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ),
-    # Requiere usuario autenticado salvo que se sobrescriba
     'DEFAULT_PERMISSION_CLASSES': (
         'rest_framework.permissions.IsAuthenticated',
     ),
-    # Paginación global
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
+    'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
-# Configuración de tokens
 SIMPLE_JWT = {
     'ACCESS_TOKEN_LIFETIME': timedelta(minutes=60),
     'REFRESH_TOKEN_LIFETIME': timedelta(days=1),
     'AUTH_HEADER_TYPES': ('Bearer',),
 }
 
-# CORS/CSRF: orígenes de frontend permitidos (Vite 5173 en dev) 
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'FactoryFlow Lite API',
+    'DESCRIPTION': 'API para gestión de órdenes de trabajo e inspecciones',
+    'VERSION': '1.0.0',
+}
+
 CORS_ALLOWED_ORIGINS = env.list(
     'CORS_ALLOWED_ORIGINS',
     default=['http://localhost:5173', 'http://127.0.0.1:5173']
