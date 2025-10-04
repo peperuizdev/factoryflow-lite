@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
 import { getWorkOrder } from "../services/workorders"
-import { listInspections } from "../services/inspections"
+import { listInspections, createInspection } from "../services/inspections"  // ← NUEVO: createInspection
 
 function StatusBadge({ status }) {
   const base = "px-2 py-1 rounded text-xs font-semibold"
@@ -26,14 +26,23 @@ export default function WorkOrderDetail() {
   // Leemos el :id de la URL → /workorders/:id
   const { id } = useParams()
 
-  // Estado local para la orden, inspecciones y estados de carga/error
+  // Estado de la orden + inspecciones
   const [order, setOrder] = useState(null)
   const [inspections, setInspections] = useState([])
+
+  // Cargas/errores de datos
   const [loadingOrder, setLoadingOrder] = useState(false)
   const [loadingIns, setLoadingIns] = useState(false)
   const [error, setError] = useState(null)
 
-  // Efecto: cargar la WorkOrder cuando cambia el id
+  // Estado del formulario de nueva inspección (inputs controlados)
+  const [result, setResult] = useState("OK")    // "OK" | "FAIL"
+  const [notes, setNotes] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [formError, setFormError] = useState(null)
+  const [formSuccess, setFormSuccess] = useState(null)
+
+  // Cargar la WorkOrder
   useEffect(() => {
     let cancelled = false
     async function fetchOrder() {
@@ -60,7 +69,7 @@ export default function WorkOrderDetail() {
     return () => { cancelled = true }
   }, [id])
 
-  // Efecto: cargar inspecciones asociadas a la orden (filtrado en backend)
+  // Cargar inspecciones de la orden (filtrado en backend)
   useEffect(() => {
     if (!id) return
     let cancelled = false
@@ -71,7 +80,7 @@ export default function WorkOrderDetail() {
         const items = Array.isArray(resp) ? resp : resp?.results ?? []
         if (!cancelled) setInspections(items)
       } catch (err) {
-        // Si falla, no interrumpimos toda la vista; mostramos vacío o podrías setear un error específico
+        // si falla, mantenemos la UI viva; podemos setear un error
       } finally {
         if (!cancelled) setLoadingIns(false)
       }
@@ -80,7 +89,42 @@ export default function WorkOrderDetail() {
     return () => { cancelled = true }
   }, [id])
 
-  // Render de estados de error/carga global (si falla la orden, no tiene sentido seguir)
+  // 7) Submit del formulario: crear inspección y refrescar lista en memoria
+  const handleCreateInspection = async (e) => {
+    e.preventDefault()
+    setFormError(null)
+    setFormSuccess(null)
+    setSubmitting(true)
+    try {
+      // POST /api/inspections/ con payload 
+      const created = await createInspection({
+        work_order: Number(id),
+        result,
+        notes: notes.trim() || undefined,
+      })
+
+      // Actualización in-memory: añadimos la nueva inspección al principio
+      setInspections((prev) => [created, ...prev])
+
+      // Limpiar formulario y feedback
+      setNotes("")
+      setResult("OK")
+      setFormSuccess("Inspección creada correctamente.")
+    } catch (err) {
+      const status = err?.response?.status
+      const msg =
+        status === 400
+          ? "Datos inválidos. Revisa el formulario."
+          : status === 401
+            ? "No autorizado. Inicia sesión."
+            : "No se pudo crear la inspección."
+      setFormError(msg)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  // 8) Si falla cargar la orden, no tiene sentido seguir
   if (error) {
     return (
       <section className="space-y-4">
@@ -91,13 +135,13 @@ export default function WorkOrderDetail() {
   }
 
   return (
-    <section className="space-y-6">
-      {/* Volver a órdenes */}
+    <section className="space-y-8">
+      {/* Volver */}
       <div className="flex items-center gap-2 text-sm text-gray-400">
         <Link to="/workorders" className="text-blue-400 hover:text-blue-300 underline">← Volver a órdenes</Link>
       </div>
 
-      {/* Encabezado con info principal */}
+      {/* Encabezado */}
       <div className="flex flex-col gap-2">
         <div className="flex items-center gap-3">
           <h2 className="text-3xl font-bold">
@@ -115,6 +159,64 @@ export default function WorkOrderDetail() {
             </span>
           </div>
         )}
+      </div>
+
+      {/* Formulario de nueva inspección */}
+      <div className="rounded-xl border border-slate-700 p-6 bg-slate-800/40">
+        <h3 className="text-xl font-semibold mb-4">Nueva inspección</h3>
+
+        {formError && (
+          <div className="mb-4 bg-red-500/20 border border-red-500 text-red-200 px-4 py-2 rounded">
+            {formError}
+          </div>
+        )}
+        {formSuccess && (
+          <div className="mb-4 bg-green-500/20 border border-green-500 text-green-200 px-4 py-2 rounded">
+            {formSuccess}
+          </div>
+        )}
+
+        <form onSubmit={handleCreateInspection} className="grid gap-4 md:grid-cols-3">
+          {/* Resultado */}
+          <div className="md:col-span-1">
+            <label htmlFor="result" className="block text-sm text-gray-300 mb-1">Resultado</label>
+            <select
+              id="result"
+              value={result}
+              onChange={(e) => setResult(e.target.value)}
+              disabled={submitting}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
+            >
+              <option value="OK">OK</option>
+              <option value="FAIL">FAIL</option>
+            </select>
+          </div>
+
+          {/* Notas */}
+          <div className="md:col-span-2">
+            <label htmlFor="notes" className="block text-sm text-gray-300 mb-1">Notas (opcional)</label>
+            <input
+              id="notes"
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Observaciones de la inspección"
+              disabled={submitting}
+              className="w-full bg-slate-900 border border-slate-700 rounded px-3 py-2 text-sm"
+            />
+          </div>
+
+          {/* Submit */}
+          <div className="md:col-span-3">
+            <button
+              type="submit"
+              disabled={submitting}
+              className="px-4 py-2 rounded bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed font-semibold transition"
+            >
+              {submitting ? "Creando…" : "Crear inspección"}
+            </button>
+          </div>
+        </form>
       </div>
 
       {/* Lista de inspecciones */}
