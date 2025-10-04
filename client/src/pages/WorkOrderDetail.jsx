@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { useParams, Link } from "react-router-dom"
-import { getWorkOrder, updateWorkOrder } from "../services/workorders" // ← NUEVO: updateWorkOrder
+import { getWorkOrder, updateWorkOrder } from "../services/workorders"
 import { listInspections, createInspection } from "../services/inspections"
 
 function StatusBadge({ status }) {
