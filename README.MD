@@ -257,12 +257,6 @@ python manage.py createsuperuser
 
 ---
 
-## Flujo (30s)
-
-> "Monté una API en Django/DRF con JWT (SimpleJWT) para proteger el CRUD de órdenes e inspecciones. En React uso un AuthContext que persiste el token en `localStorage` y un interceptor Axios que lo añade a cada request. Protejo rutas con un guard que redirige a `/login` guardando `state.from`. El listado de órdenes tiene filtros y paginación **server-side**; el detalle permite **editar** título/estación/estado y **crear inspecciones**. Las creaciones/eliminaciones actualizan la UI en memoria para una UX fluida. La API está documentada automáticamente con Swagger UI."
-
----
-
 ## Workflow Git y commits
 
 * Ramas:
